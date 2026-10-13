@@ -68,6 +68,12 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'today-add',
+        icon: const Icon(Icons.add),
+        label: const Text('Añadir'),
+        onPressed: () => context.push('/add-medication'),
+      ),
       body: tasksState.when(
         skipLoadingOnRefresh: true,
         skipLoadingOnReload: true,

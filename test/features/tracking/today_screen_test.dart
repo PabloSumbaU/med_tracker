@@ -116,5 +116,6 @@ void main() {
     await _pump(tester, []);
     expect(find.text('Aún no tienes medicamentos registrados.'), findsOneWidget);
     expect(find.text('Añadir medicamento'), findsOneWidget);
+    expect(find.text('Añadir'), findsOneWidget);
   });
 }

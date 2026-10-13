@@ -26,15 +26,28 @@ void main() {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final _router = createAppRouter();
+
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'MedTracker',
       theme: AppTheme.lightTheme,
-      routerConfig: appRouter,
+      routerConfig: _router,
       debugShowCheckedModeBanner: false,
     );
   }

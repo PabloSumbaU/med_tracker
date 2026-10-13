@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../features/medication/presentation/add_medication_screen.dart';
 import '../../features/medication/presentation/medication_list_screen.dart';
 import '../../features/tracking/presentation/today_screen.dart';
 
-final appRouter = GoRouter(
+GoRouter createAppRouter() => GoRouter(
   initialLocation: '/',
   routes: [
     // Pestañas principales con barra de navegación inferior.
