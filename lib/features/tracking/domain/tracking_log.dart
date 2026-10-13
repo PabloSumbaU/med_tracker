@@ -29,7 +29,7 @@ class TrackingLog {
     DateTime? scheduledDate,
     String? scheduledTime,
     DateTime? actualTakeDate,
-    DateTime? actualTakeTime,
+    String? actualTakeTime,
     LogStatus? status
   }) {
     return TrackingLog(

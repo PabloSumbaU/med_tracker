@@ -3,6 +3,9 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database_service.dart';
+import '../../../core/utils/date_keys.dart';
+import '../../medication/domain/dose_schedule.dart';
+import '../../medication/domain/medication.dart';
 import '../domain/tracking_log.dart';
 
 // Provider para inyectar este repositorio en la UI
@@ -19,85 +22,135 @@ class TrackingRepository {
   // Guardar o actualizar un registro de toma
   Future<void> upsertTrackingLog(TrackingLog log) async {
     final db = await _dbFuture;
-    
-    // Extraemos solo la parte de la fecha (YYYY-MM-DD) para facilitar las búsquedas
-    final scheduledDateStr = log.scheduledDate.toIso8601String().split('T').first;
-    final actualTakeDateStr = log.actualTakeDate?.toIso8601String().split('T').first;
-
     await db.insert(
       'tracking_logs',
-      {
-        'logId': log.logId,
-        'medicationId': log.medicationId,
-        'scheduledDate': scheduledDateStr,
-        'scheduledTime': log.scheduledTime,
-        'actualTakeDate': actualTakeDateStr,
-        'actualTakeTime': log.actualTakeTime,
-        'status': log.status.name,
-      },
-      // Si el logId ya existe, lo reemplaza (útil para cuando el usuario presiona "Tomado")
-      conflictAlgorithm: ConflictAlgorithm.replace, 
+      _toMap(log),
+      // Si el logId ya existe, lo reemplaza
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  // Obtener todas las tomas programadas para un día específico
+  // Obtener todas las tomas programadas para un día específico,
+  // ordenadas cronológicamente por hora programada (UI-01)
   Future<List<TrackingLog>> getLogsByDate(DateTime date) async {
     final db = await _dbFuture;
-    
-    // Formateamos la fecha solicitada a YYYY-MM-DD
-    final dateString = date.toIso8601String().split('T').first;
 
-    final List<Map<String, dynamic>> maps = await db.query(
+    final maps = await db.query(
       'tracking_logs',
       where: 'scheduledDate = ?',
-      whereArgs: [dateString],
-      orderBy: 'scheduledTime ASC', // Ordenamos cronológicamente
+      whereArgs: [toDateKey(date)],
+      orderBy: 'scheduledTime ASC',
     );
 
-    return List.generate(maps.length, (i) {
-      return TrackingLog(
-        logId: maps[i]['logId'] as String,
-        medicationId: maps[i]['medicationId'] as String,
-        scheduledDate: DateTime.parse(maps[i]['scheduledDate'] as String),
-        scheduledTime: maps[i]['scheduledTime'] as String,
-        actualTakeDate: maps[i]['actualTakeDate'] != null 
-            ? DateTime.parse(maps[i]['actualTakeDate'] as String) 
-            : null,
-        actualTakeTime: maps[i]['actualTakeTime'] as String?,
-        status: LogStatus.values.byName(maps[i]['status'] as String),
-      );
-    });
+    return maps.map(_fromMap).toList();
   }
 
-  // Verificar si ya existen logs para una fecha, si no, crearlos basados en los horarios
-  Future<void> generateDailyLogsIfNeeded(DateTime date, List<Medication> activeMeds, Map<String, DoseSchedule> schedules) async {
+  // Marcar una toma como Realizada guardando la fecha y hora REAL en la que
+  // el usuario la confirmó en la app (BR-03), aunque sea retroactiva.
+  Future<void> markAsTaken(String logId, {DateTime? at}) async {
+    final now = at ?? DateTime.now();
+    await _updateStatus(
+      logId,
+      LogStatus.realizada,
+      actualTakeDate: toDateKey(now),
+      actualTakeTime: toTimeKey(now),
+    );
+  }
+
+  // Marcar una toma como Omitida (no se registra hora real de toma)
+  Future<void> markAsSkipped(String logId) =>
+      _updateStatus(logId, LogStatus.omitida);
+
+  // Volver una toma a Pendiente (para deshacer un toque equivocado)
+  Future<void> resetToPending(String logId) =>
+      _updateStatus(logId, LogStatus.pendiente);
+
+  Future<void> _updateStatus(
+    String logId,
+    LogStatus status, {
+    String? actualTakeDate,
+    String? actualTakeTime,
+  }) async {
     final db = await _dbFuture;
-    final dateStr = date.toIso8601String().split('T').first;
+    await db.update(
+      'tracking_logs',
+      {
+        'status': status.name,
+        'actualTakeDate': actualTakeDate,
+        'actualTakeTime': actualTakeTime,
+      },
+      where: 'logId = ?',
+      whereArgs: [logId],
+    );
+  }
 
-    for (var med in activeMeds) {
+  // Crea las tomas "pendientes" de un día a partir de los horarios de cada
+  // medicamento activo. Es idempotente: si la toma ya existe no se toca, así
+  // que se puede llamar cada vez que se abre la pantalla de Hoy.
+  //
+  // Nota: por ahora solo la frecuencia "diaria" genera tomas; los días
+  // específicos y los intervalos de horas se implementarán más adelante.
+  Future<void> generateDailyLogsIfNeeded(
+    DateTime date,
+    List<Medication> activeMeds,
+    Map<String, DoseSchedule> schedules,
+  ) async {
+    final db = await _dbFuture;
+    final dateStr = toDateKey(date);
+
+    final batch = db.batch();
+    for (final med in activeMeds) {
       final schedule = schedules[med.id];
-      if (schedule == null) continue;
+      if (schedule == null || schedule.frequency != DoseFrequency.diaria) {
+        continue;
+      }
 
-      for (var time in schedule.scheduledTimes) {
-        // Comprobamos si ya existe el log para este medicamento, fecha y hora
-        final existing = await db.query(
+      for (final time in schedule.scheduledTimes) {
+        // El ID es determinista (medicamento + fecha + hora), así que con
+        // ConflictAlgorithm.ignore nunca se duplican ni se pisan registros.
+        batch.insert(
           'tracking_logs',
-          where: 'medicationId = ? AND scheduledDate = ? AND scheduledTime = ?',
-          whereArgs: [med.id, dateStr, time],
-        );
-
-        if (existing.isEmpty) {
-          await db.insert('tracking_logs', {
-            'logId': '${med.id}_${dateStr}_$time',
+          {
+            'logId': buildLogId(med.id, dateStr, time),
             'medicationId': med.id,
             'scheduledDate': dateStr,
             'scheduledTime': time,
             'actualTakeDate': null,
             'actualTakeTime': null,
-            'status': 'pendiente',
-          });
-        }
+            'status': LogStatus.pendiente.name,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
       }
     }
+    await batch.commit(noResult: true);
+  }
+
+  static String buildLogId(String medicationId, String dateKey, String time) =>
+      '${medicationId}_${dateKey}_$time';
+
+  Map<String, Object?> _toMap(TrackingLog log) => {
+        'logId': log.logId,
+        'medicationId': log.medicationId,
+        'scheduledDate': toDateKey(log.scheduledDate),
+        'scheduledTime': log.scheduledTime,
+        'actualTakeDate':
+            log.actualTakeDate == null ? null : toDateKey(log.actualTakeDate!),
+        'actualTakeTime': log.actualTakeTime,
+        'status': log.status.name,
+      };
+
+  TrackingLog _fromMap(Map<String, Object?> row) {
+    return TrackingLog(
+      logId: row['logId'] as String,
+      medicationId: row['medicationId'] as String,
+      scheduledDate: DateTime.parse(row['scheduledDate'] as String),
+      scheduledTime: row['scheduledTime'] as String,
+      actualTakeDate: row['actualTakeDate'] != null
+          ? DateTime.parse(row['actualTakeDate'] as String)
+          : null,
+      actualTakeTime: row['actualTakeTime'] as String?,
+      status: LogStatus.values.byName(row['status'] as String),
+    );
   }
 }

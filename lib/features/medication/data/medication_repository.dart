@@ -54,22 +54,54 @@ class MedicationRepository {
   // Obtener todos los medicamentos activos
   Future<List<Medication>> getActiveMedications() async {
     final db = await _dbFuture;
-    
-    final List<Map<String, dynamic>> maps = await db.query(
+
+    final maps = await db.query(
       'medications',
       where: 'status = ?',
       whereArgs: [MedicationStatus.activo.name],
+      orderBy: 'name COLLATE NOCASE ASC',
     );
 
-    return List.generate(maps.length, (i) {
-      return Medication(
-        id: maps[i]['id'] as String,
-        name: maps[i]['name'] as String,
-        description: maps[i]['description'] as String?,
-        type: MedicationType.values.byName(maps[i]['type'] as String),
-        status: MedicationStatus.values.byName(maps[i]['status'] as String),
-      );
-    });
+    return maps.map(_medicationFromMap).toList();
+  }
+
+  // Obtener todos los medicamentos (activos e inactivos), indexados por ID.
+  // Útil para mostrar el nombre en el historial aunque el medicamento esté archivado.
+  Future<Map<String, Medication>> getAllMedicationsById() async {
+    final db = await _dbFuture;
+    final maps = await db.query('medications');
+    return {
+      for (final m in maps.map(_medicationFromMap)) m.id: m,
+    };
+  }
+
+  // Obtener todos los esquemas de dosis, indexados por ID de medicamento
+  Future<Map<String, DoseSchedule>> getSchedulesByMedicationId() async {
+    final db = await _dbFuture;
+    final maps = await db.query('dose_schedules');
+
+    return {
+      for (final row in maps)
+        row['medicationId'] as String: DoseSchedule(
+          medicationId: row['medicationId'] as String,
+          dose: row['dose'] as String,
+          frequency: DoseFrequency.values.byName(row['frequency'] as String),
+          scheduledTimes: (row['scheduledTimes'] as String)
+              .split(',')
+              .where((t) => t.isNotEmpty)
+              .toList(),
+        ),
+    };
+  }
+
+  Medication _medicationFromMap(Map<String, Object?> row) {
+    return Medication(
+      id: row['id'] as String,
+      name: row['name'] as String,
+      description: row['description'] as String?,
+      type: MedicationType.values.byName(row['type'] as String),
+      status: MedicationStatus.values.byName(row['status'] as String),
+    );
   }
 
   // Eliminar un medicamento (gracias al ON DELETE CASCADE en SQLite, 

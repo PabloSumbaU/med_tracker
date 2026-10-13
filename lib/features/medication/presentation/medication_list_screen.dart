@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'medication_controller.dart';
-import '../domain/medication.dart';
+import 'medication_icons.dart';
 
 class MedicationListScreen extends ConsumerWidget {
   const MedicationListScreen({super.key});
@@ -37,7 +37,7 @@ class MedicationListScreen extends ConsumerWidget {
               return Card(
                 child: ListTile(
                   leading: CircleAvatar(
-                    child: Icon(_getIconForType(med.type)),
+                    child: Icon(med.type.icon),
                   ),
                   title: Text(
                     med.name,
@@ -69,18 +69,5 @@ class MedicationListScreen extends ConsumerWidget {
         child: const Icon(Icons.add),
       ),
     );
-  }
-
-  IconData _getIconForType(MedicationType type) {
-    switch (type) {
-      case MedicationType.pastilla:
-        return Icons.medication;
-      case MedicationType.jarabe:
-        return Icons.local_pharmacy;
-      case MedicationType.inyeccion:
-        return Icons.vaccines;
-      default:
-        return Icons.medical_services;
-    }
   }
 }

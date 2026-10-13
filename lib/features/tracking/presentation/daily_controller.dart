@@ -1,66 +1,124 @@
 // lib/features/tracking/presentation/daily_controller.dart
 
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/utils/date_keys.dart';
+import '../../medication/data/medication_repository.dart';
+import '../../medication/domain/medication.dart';
+import '../../medication/presentation/medication_controller.dart';
 import '../data/tracking_repository.dart';
 import '../domain/tracking_log.dart';
-import '../../medication/data/medication_repository.dart';
 
-// Modelo auxiliar para mostrar el nombre del medicamento junto con su log en la UI
+/// Una toma del día lista para mostrarse en la UI: el log más los datos
+/// del medicamento y su dosis.
 class DailyTaskItem {
   final TrackingLog log;
   final String medicationName;
+  final MedicationType medicationType;
   final String dose;
+  final String? description;
 
-  DailyTaskItem({required this.log, required this.medicationName, required this.dose});
+  const DailyTaskItem({
+    required this.log,
+    required this.medicationName,
+    required this.medicationType,
+    required this.dose,
+    this.description,
+  });
+
+  /// Fecha y hora programada completa de la toma.
+  DateTime get scheduledAt =>
+      combineDateAndTime(log.scheduledDate, log.scheduledTime);
+
+  /// La toma sigue pendiente y ya pasó su hora programada.
+  bool isOverdue(DateTime now) =>
+      log.status == LogStatus.pendiente && scheduledAt.isBefore(now);
 }
 
-final dailyControllerProvider = AsyncNotifierProvider<DailyController, List<DailyTaskItem>>(() {
-  return DailyController();
-});
+final dailyControllerProvider =
+    AsyncNotifierProvider<DailyController, List<DailyTaskItem>>(
+  DailyController.new,
+);
 
 class DailyController extends AsyncNotifier<List<DailyTaskItem>> {
+  /// Día que se está mostrando (para detectar el cambio de día).
+  DateTime _day = DateTime.now();
+  DateTime get day => _day;
+
   @override
-  FutureOr<List<DailyTaskItem>> build() async {
-    return _loadTodayTasks();
+  Future<List<DailyTaskItem>> build() async {
+    // Al depender del controlador de medicamentos, esta lista se recalcula
+    // sola cuando el usuario añade o elimina un medicamento.
+    await ref.watch(medicationControllerProvider.future);
+    _day = DateTime.now();
+    return _loadTasks(_day);
   }
 
-  Future<List<DailyTaskItem>> _loadTodayTasks() async {
-    final today = DateTime.now();
+  Future<List<DailyTaskItem>> _loadTasks(DateTime day) async {
     final medRepo = ref.read(medicationRepositoryProvider);
     final trackingRepo = ref.read(trackingRepositoryProvider);
 
     final activeMeds = await medRepo.getActiveMedications();
-    
-    // Necesitamos también los esquemas de dosis para saber qué hora le toca a cada uno
-    // (Asumiendo que puedes obtenerlos o guardarlos en un mapa rápido)
-    // Para simplificar, generamos los logs de hoy:
-    // ...
-    
-    final rawLogs = await trackingRepo.getLogsByDate(today);
-    
-    List<DailyTaskItem> items = [];
-    for (var log in rawLogs) {
-      // Buscamos el nombre del medicamento correspondiente
-      final med = activeMeds.firstWhere((m) => m.id == log.medicationId, 
-          orElse: () => Medication(id: '', name: 'Medicamento desconocido', type: MedicationType.pastilla));
-      
+    final schedules = await medRepo.getSchedulesByMedicationId();
+
+    // Creamos las tomas pendientes de hoy si aún no existen
+    await trackingRepo.generateDailyLogsIfNeeded(day, activeMeds, schedules);
+
+    final logs = await trackingRepo.getLogsByDate(day);
+    final medsById = await medRepo.getAllMedicationsById();
+
+    final items = <DailyTaskItem>[];
+    for (final log in logs) {
+      final med = medsById[log.medicationId];
+      if (med == null) continue; // Medicamento eliminado
       items.add(DailyTaskItem(
         log: log,
         medicationName: med.name,
-        dose: 'Dosis programada',
+        medicationType: med.type,
+        description: med.description,
+        dose: schedules[log.medicationId]?.dose ?? '',
       ));
     }
+    // La consulta ya viene ordenada por hora; desempatamos por nombre
+    items.sort((a, b) {
+      final byTime = a.log.scheduledTime.compareTo(b.log.scheduledTime);
+      return byTime != 0 ? byTime : a.medicationName.compareTo(b.medicationName);
+    });
     return items;
   }
 
-  Future<void> markAsTaken(String logId) async {
-    final now = DateTime.now();
-    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    
-    // Actualizamos en base de datos
-    // ...
-    state = await AsyncValue.guard(() => _loadTodayTasks());
+  /// Recarga la lista. Si cambió el día (la app quedó abierta pasada la
+  /// medianoche), genera las tomas del nuevo día.
+  Future<void> refresh() async {
+    _day = DateTime.now();
+    state = await AsyncValue.guard(() => _loadTasks(_day));
+  }
+
+  /// Si el día mostrado ya no es hoy, recarga.
+  Future<void> refreshIfDayChanged() async {
+    if (toDateKey(_day) != toDateKey(DateTime.now())) {
+      await refresh();
+    }
+  }
+
+  Future<void> markAsTaken(String logId) => _apply(
+        (repo) => repo.markAsTaken(logId),
+      );
+
+  Future<void> markAsSkipped(String logId) => _apply(
+        (repo) => repo.markAsSkipped(logId),
+      );
+
+  Future<void> undo(String logId) => _apply(
+        (repo) => repo.resetToPending(logId),
+      );
+
+  Future<void> _apply(Future<void> Function(TrackingRepository) action) async {
+    // No ponemos el estado en "loading" para que la lista no parpadee
+    final repo = ref.read(trackingRepositoryProvider);
+    state = await AsyncValue.guard(() async {
+      await action(repo);
+      return _loadTasks(_day);
+    });
   }
 }

@@ -60,39 +60,51 @@ class _AddMedicationScreenState extends ConsumerState<AddMedicationScreen> {
     }
   }
 
-  void _saveMedication() {
-    if (_formKey.currentState!.validate()) {
-      final medId = const Uuid().v4();
+  bool _saving = false;
 
-      // Convertimos los TimeOfDay a formato HH:MM (String)
-      final formattedTimes = _selectedTimes.map((t) {
-        final hour = t.hour.toString().padLeft(2, '0');
-        final minute = t.minute.toString().padLeft(2, '0');
-        return '$hour:$minute';
-      }).toList();
+  Future<void> _saveMedication() async {
+    if (_saving || !_formKey.currentState!.validate()) return;
 
-      final newMedication = Medication(
-        id: medId,
-        name: _nameController.text.trim(),
-        description: _descriptionController.text.trim().isEmpty 
-            ? null 
-            : _descriptionController.text.trim(),
-        type: _selectedType,
+    final medId = const Uuid().v4();
+
+    // Convertimos los TimeOfDay a formato HH:MM, sin duplicados y en orden
+    final formattedTimes = _selectedTimes
+        .map((t) =>
+            '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}')
+        .toSet()
+        .toList()
+      ..sort();
+
+    final description = _descriptionController.text.trim();
+    final newMedication = Medication(
+      id: medId,
+      name: _nameController.text.trim(),
+      description: description.isEmpty ? null : description,
+      type: _selectedType,
+    );
+
+    final newSchedule = DoseSchedule(
+      medicationId: medId,
+      dose: _doseController.text.trim(),
+      frequency: _selectedFrequency,
+      scheduledTimes: formattedTimes,
+    );
+
+    setState(() => _saving = true);
+    await ref
+        .read(medicationControllerProvider.notifier)
+        .addMedication(newMedication, newSchedule);
+    if (!mounted) return;
+
+    final result = ref.read(medicationControllerProvider);
+    if (result.hasError) {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo guardar: ${result.error}')),
       );
-
-      final newSchedule = DoseSchedule(
-        medicationId: medId,
-        dose: _doseController.text.trim(),
-        frequency: _selectedFrequency,
-        scheduledTimes: formattedTimes,
-      );
-
-      ref
-          .read(medicationControllerProvider.notifier)
-          .addMedication(newMedication, newSchedule);
-
-      context.pop();
+      return;
     }
+    context.pop();
   }
 
   @override
@@ -127,6 +139,7 @@ class _AddMedicationScreenState extends ConsumerState<AddMedicationScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<MedicationType>(
+                initialValue: _selectedType,
                 decoration: const InputDecoration(
                   labelText: 'Presentación',
                   border: OutlineInputBorder(),
@@ -134,7 +147,7 @@ class _AddMedicationScreenState extends ConsumerState<AddMedicationScreen> {
                 items: MedicationType.values.map((type) {
                   return DropdownMenuItem(
                     value: type,
-                    child: Text(type.name.toUpperCase()),
+                    child: Text(type.label),
                   );
                 }).toList(),
                 onChanged: (val) {
@@ -190,8 +203,15 @@ class _AddMedicationScreenState extends ConsumerState<AddMedicationScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _saveMedication,
-                  child: const Text('Guardar Medicamento', style: TextStyle(fontSize: 16)),
+                  onPressed: _saving ? null : _saveMedication,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Guardar Medicamento',
+                          style: TextStyle(fontSize: 16)),
                 ),
               ),
             ],

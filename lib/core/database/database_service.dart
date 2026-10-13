@@ -17,16 +17,19 @@ class DatabaseService{
     return await openDatabase(
       path,
       version: 1,
-      onCreate: _onCreate,
-      onConfigure: (db) async {
-        // Activamos el soporte para Llaves Foráneas (Foreign Keys) en SQLite
-        await db.execute('PRAGMA foreign_keys = ON');
-      }
+      onCreate: createSchema,
+      onConfigure: configure,
     );
   }
-  
+
+  // Activamos el soporte para Llaves Foráneas (Foreign Keys) en SQLite.
+  // Público para poder reutilizarlo en los tests con una base en memoria.
+  static Future<void> configure(Database db) async {
+    await db.execute('PRAGMA foreign_keys = ON');
+  }
+
   // Este método solo se ejecuta la primera vez que se instala la app
-  static Future<void> _onCreate(Database db, int version) async {
+  static Future<void> createSchema(Database db, int version) async {
     // Tabla de Medicamentos
     await db.execute('''
       CREATE TABLE medications(
