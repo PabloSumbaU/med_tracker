@@ -1,10 +1,15 @@
 enum MedicationType {
-  pastilla,
-  jarabe,
-  inyeccion,
-  gotas,
-  inhalador,
-  otro
+  pastilla('Pastilla'),
+  jarabe('Jarabe'),
+  inyeccion('Inyección'),
+  gotas('Gotas'),
+  inhalador('Inhalador'),
+  otro('Otro');
+
+  const MedicationType(this.label);
+
+  /// Nombre para mostrar en la interfaz.
+  final String label;
 }
 
 enum MedicationStatus {
