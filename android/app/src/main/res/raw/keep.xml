@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Evita que R8 elimine en release los recursos que solo usa el plugin de
+     notificaciones (si se eliminan, los avisos fallan en silencio). -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_pill,@raw/med_chime" />

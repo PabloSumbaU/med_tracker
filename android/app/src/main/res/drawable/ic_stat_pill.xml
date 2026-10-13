@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de la barra de estado para los recordatorios (debe ser blanco
+     sobre transparente; Android lo tiñe automáticamente). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4.22,11.29l5.07,-5.07c2.53,-2.53 6.65,-2.53 9.18,0s2.53,6.65 0,9.18l-5.07,5.07c-2.53,2.53 -6.65,2.53 -9.18,0s-2.53,-6.65 0,-9.18zM5.64,12.71c-1.75,1.75 -1.75,4.6 0,6.36s4.6,1.75 6.36,0l2.54,-2.54 -6.36,-6.36 -2.54,2.54z" />
+</vector>

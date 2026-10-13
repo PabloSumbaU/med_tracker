@@ -43,6 +43,7 @@ dependencies:
   uuid: ^4.6.0
   path: ^1.9.1
   sqflite_common_ffi: ^2.4.3
+  timezone: ^0.11.1
 
 dev_dependencies:
   flutter_test:

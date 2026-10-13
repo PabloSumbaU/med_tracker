@@ -45,6 +45,55 @@ class TrackingRepository {
     return maps.map(_fromMap).toList();
   }
 
+  // Estados de todas las tomas entre dos fechas (inclusive), por logId.
+  // Lo usa el planificador de recordatorios para no avisar de tomas ya hechas.
+  Future<Map<String, LogStatus>> getStatusesBetween(
+      DateTime from, DateTime to) async {
+    final db = await _dbFuture;
+    final rows = await db.query(
+      'tracking_logs',
+      columns: ['logId', 'status'],
+      where: 'scheduledDate BETWEEN ? AND ?',
+      whereArgs: [toDateKey(from), toDateKey(to)],
+    );
+    return {
+      for (final r in rows)
+        r['logId'] as String: LogStatus.values.byName(r['status'] as String),
+    };
+  }
+
+  // Garantiza que exista el registro de una toma (pendiente si es nuevo).
+  // Necesario cuando se responde a una notificación de un día cuyas tomas
+  // aún no se habían generado (p. ej. la app no se abrió ese día).
+  Future<String> ensureLog(
+      String medicationId, String dateKey, String time) async {
+    final db = await _dbFuture;
+    final logId = buildLogId(medicationId, dateKey, time);
+    await db.insert(
+      'tracking_logs',
+      {
+        'logId': logId,
+        'medicationId': medicationId,
+        'scheduledDate': dateKey,
+        'scheduledTime': time,
+        'actualTakeDate': null,
+        'actualTakeTime': null,
+        'status': LogStatus.pendiente.name,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    return logId;
+  }
+
+  // Estado actual de una toma, o null si no existe.
+  Future<LogStatus?> getStatus(String logId) async {
+    final db = await _dbFuture;
+    final rows = await db.query('tracking_logs',
+        columns: ['status'], where: 'logId = ?', whereArgs: [logId]);
+    if (rows.isEmpty) return null;
+    return LogStatus.values.byName(rows.first['status'] as String);
+  }
+
   // Marcar una toma como Realizada guardando la fecha y hora REAL en la que
   // el usuario la confirmó en la app (BR-03), aunque sea retroactiva.
   Future<void> markAsTaken(String logId, {DateTime? at}) async {
