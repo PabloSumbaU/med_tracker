@@ -1,0 +1,123 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview related
+.widget_preview/
+
+
+# ==========================================
+# Flutter / Dart
+# ==========================================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+ephemeral/
+
+# Símbolos de depuración para la Web
+*.js.deps
+*.js.map
+
+# ==========================================
+# Android
+# ==========================================
+android/.gradle/
+android/captures/
+android/gradleApp.setting
+android/m2/
+android/local.properties
+
+# Archivos de claves/firma APK (Nunca subas tus llaves a GitHub)
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# ==========================================
+# iOS / macOS (por si compilas en el futuro)
+# ==========================================
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flt
+ios/DerivedData/
+ios/Runner.xcworkspace/
+ios/Pods/
+ios/Podfile.lock
+
+# ==========================================
+# Windows Desktop
+# ==========================================
+windows/flutter/ephemeral/
+
+# ==========================================
+# IDEs & Editores (VS Code, Android Studio)
+# ==========================================
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*~
+
+# ==========================================
+# Sistema Operativo
+# ==========================================
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# Base de datos SQLite local (para pruebas)
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
