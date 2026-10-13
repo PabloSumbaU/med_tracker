@@ -2,10 +2,12 @@
 
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/utils/date_keys.dart';
 import '../../medication/data/medication_repository.dart';
 import '../../medication/domain/medication.dart';
 import '../../medication/presentation/medication_controller.dart';
+import '../../reminders/data/reminder_scheduler.dart';
 import '../data/tracking_repository.dart';
 import '../domain/tracking_log.dart';
 
@@ -50,8 +52,20 @@ class DailyController extends AsyncNotifier<List<DailyTaskItem>> {
     // Al depender del controlador de medicamentos, esta lista se recalcula
     // sola cuando el usuario añade o elimina un medicamento.
     await ref.watch(medicationControllerProvider.future);
+
+    // Si el usuario respondió a una notificación con la app abierta, recargamos
+    final sub = NotificationService.instance.changes.listen((_) => refresh());
+    ref.onDispose(sub.cancel);
+
     _day = DateTime.now();
-    return _loadTasks(_day);
+    final tasks = await _loadTasks(_day);
+    _syncReminders();
+    return tasks;
+  }
+
+  /// Recalcula los recordatorios programados en el sistema operativo.
+  void _syncReminders() {
+    unawaited(ref.read(reminderSchedulerProvider).reschedule());
   }
 
   Future<List<DailyTaskItem>> _loadTasks(DateTime day) async {
@@ -92,6 +106,7 @@ class DailyController extends AsyncNotifier<List<DailyTaskItem>> {
   Future<void> refresh() async {
     _day = DateTime.now();
     state = await AsyncValue.guard(() => _loadTasks(_day));
+    _syncReminders();
   }
 
   /// Si el día mostrado ya no es hoy, recarga.
@@ -101,13 +116,16 @@ class DailyController extends AsyncNotifier<List<DailyTaskItem>> {
     }
   }
 
-  Future<void> markAsTaken(String logId) => _apply(
-        (repo) => repo.markAsTaken(logId),
-      );
+  Future<void> markAsTaken(String logId) => _apply((repo) async {
+        await repo.markAsTaken(logId);
+        // Quitamos la notificación si ya estaba en la bandeja
+        await NotificationService.instance.cancelForLog(logId);
+      });
 
-  Future<void> markAsSkipped(String logId) => _apply(
-        (repo) => repo.markAsSkipped(logId),
-      );
+  Future<void> markAsSkipped(String logId) => _apply((repo) async {
+        await repo.markAsSkipped(logId);
+        await NotificationService.instance.cancelForLog(logId);
+      });
 
   Future<void> undo(String logId) => _apply(
         (repo) => repo.resetToPending(logId),
@@ -120,5 +138,6 @@ class DailyController extends AsyncNotifier<List<DailyTaskItem>> {
       await action(repo);
       return _loadTasks(_day);
     });
+    _syncReminders();
   }
 }

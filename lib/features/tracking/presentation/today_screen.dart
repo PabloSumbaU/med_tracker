@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/utils/date_keys.dart';
 import '../../medication/presentation/medication_controller.dart';
 import '../../medication/presentation/medication_icons.dart';
+import '../../reminders/presentation/permission_banner.dart';
 import '../domain/tracking_log.dart';
 import 'daily_controller.dart';
 
@@ -30,9 +31,18 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
   void initState() {
     super.initState();
     // Al volver a la app, si ya es otro día, cargamos las tomas del nuevo día
-    _lifecycle = AppLifecycleListener(onResume: _tick);
+    _lifecycle = AppLifecycleListener(onResume: _onResume);
     // Cada minuto actualizamos qué tomas están atrasadas
     _ticker = Timer.periodic(const Duration(minutes: 1), (_) => _tick());
+  }
+
+  // Al volver a la app recargamos siempre: el usuario pudo marcar una toma
+  // desde la notificación o cambiar permisos en los ajustes del sistema.
+  void _onResume() {
+    if (!mounted) return;
+    setState(() => _now = DateTime.now());
+    ref.read(dailyControllerProvider.notifier).refresh();
+    ref.invalidate(notificationPermissionProvider);
   }
 
   void _tick() {
@@ -109,7 +119,12 @@ class _TaskList extends ConsumerWidget {
       itemCount: tasks.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return _ProgressHeader(done: done, total: tasks.length);
+          return Column(
+            children: [
+              const NotificationPermissionBanner(),
+              _ProgressHeader(done: done, total: tasks.length),
+            ],
+          );
         }
         final task = tasks[index - 1];
         return _DoseCard(
@@ -370,6 +385,7 @@ class _EmptyView extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(32),
       children: [
+        const NotificationPermissionBanner(),
         const SizedBox(height: 48),
         Icon(Icons.event_available,
             size: 72, color: theme.colorScheme.primary),
